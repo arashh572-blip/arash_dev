@@ -1,1 +1,36 @@
-const $=id=>document.getElementById(id),c=window.ARASHDEV_CONFIG||{};let db,items=[];function msg(s){$('status').textContent=s}function esc(s=''){return String(s).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]))}if(!window.supabase||!c.SUPABASE_URL||c.SUPABASE_URL.startsWith('YOUR_')){msg('ابتدا config.js را طبق README تنظیم کن.');$('loginBtn').disabled=true}else{db=window.supabase.createClient(c.SUPABASE_URL,c.SUPABASE_ANON_KEY);db.auth.getSession().then(({data})=>{if(data.session)openEditor()})}$('loginBtn').onclick=async()=>{msg('در حال ورود...');let {error}=await db.auth.signInWithPassword({email:$('email').value,password:$('pass').value});if(error)msg('ورود ناموفق: '+error.message);else openEditor()};function openEditor(){$('login').classList.add('hidden');$('editor').classList.remove('hidden');loadList()}$('logout').onclick=async()=>{await db.auth.signOut();$('editor').classList.add('hidden');$('login').classList.remove('hidden')};async function upload(f){let ext=(f.name.split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'');let path=Date.now()+'-'+crypto.randomUUID()+'.'+ext;let {error}=await db.storage.from('project-images').upload(path,f);if(error)throw error;return db.storage.from('project-images').getPublicUrl(path).data.publicUrl}$('form').onsubmit=async e=>{e.preventDefault();try{msg('در حال ذخیره و آپلود عکس‌ها...');let id=$('pid').value,old=items.find(x=>String(x.id)===String(id));let cover=old?.cover_url||null;if($('cover').files[0])cover=await upload($('cover').files[0]);let images=old?.images||[];for(let f of $('gallery').files)images.push(await upload(f));let p={title:$('title').value,category:$('category').value,description:$('description').value,details:$('details').value,project_url:$('url').value||null,cover_url:cover,images,published:$('published').checked};let r=id?await db.from('projects').update(p).eq('id',id):await db.from('projects').insert(p);if(r.error)throw r.error;$('form').reset();$('pid').value='';msg('پروژه ذخیره شد.');loadList()}catch(e){msg('خطا: '+e.message)}};$('reset').onclick=()=>$('form').reset();async function loadList(){let {data,error}=await db.from('projects').select('*').order('created_at',{ascending:false});if(error){msg(error.message);return}items=data||[];$('list').innerHTML=items.map(p=>`<div class="item"><div><b>${esc(p.title)}</b><small>${p.published?'منتشرشده':'پیش‌نویس'}</small></div><div><button class="btn gray" data-edit="${p.id}">ویرایش</button><button class="btn red" data-del="${p.id}">حذف</button></div></div>`).join('')||'پروژه‌ای ثبت نشده.';document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(b.dataset.edit));document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>del(b.dataset.del))}function edit(id){let p=items.find(x=>String(x.id)===String(id));$('pid').value=p.id;$('title').value=p.title;$('category').value=p.category;$('description').value=p.description;$('details').value=p.details||'';$('url').value=p.project_url||'';$('published').checked=p.published;window.scrollTo({top:0,behavior:'smooth'});msg('در حال ویرایش '+p.title+'؛ برای حفظ عکس‌های قبلی عکس جدید اجباری نیست.')}async function del(id){let p=items.find(x=>String(x.id)===String(id));if(!confirm('پروژه '+p.title+' حذف شود؟'))return;let {error}=await db.from('projects').delete().eq('id',id);if(error)msg(error.message);else{msg('حذف شد.');loadList()}}
+$('loginBtn').addEventListener('click', async (e) => {
+  e.preventDefault();
+
+  try {
+    msg('در حال اتصال...');
+
+    if (!db) {
+      msg('اتصال به دیتابیس برقرار نیست.');
+      return;
+    }
+
+    const email = $('email').value.trim();
+    const password = $('pass').value;
+
+    if (!email || !password) {
+      msg('ایمیل و رمز عبور را وارد کن.');
+      return;
+    }
+
+    const { data, error } = await db.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      msg('خطا: ' + error.message);
+      return;
+    }
+
+    openEditor();
+
+  } catch (err) {
+    msg('خطا: ' + err.message);
+    console.error(err);
+  }
+});
