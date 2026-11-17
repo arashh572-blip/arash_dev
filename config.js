@@ -1,4 +1,4 @@
 window.ARASHDEV_CONFIG = {
-  SUPABASE_URL: "آدرس واقعی پروژه",
-  SUPABASE_ANON_KEY: "کلید واقعی Publishable"
+  SUPABASE_URL: "YOUR_SUPABASE_PROJECT_URL",
+  SUPABASE_ANON_KEY: "YOUR_SUPABASE_ANON_KEY"
 };
