@@ -1,239 +1,85 @@
 const $ = id => document.getElementById(id);
+const c = window.ARASHDEV_CONFIG || {};
 
-let db = null;
-let items = [];
+let db, items = [];
 
-function msg(message) {
-  if ($('loginStatus')) {
-    $('loginStatus').textContent = message;
-  }
-
-  if ($('status')) {
-    $('status').textContent = message;
-  }
+function msg(s) {
+  $('loginStatus').textContent = s;
 }
 
-function esc(value = '') {
-  return String(value).replace(/[&<>"']/g, char => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[char]);
+if (!window.supabase) {
+  msg('کتابخانه Supabase بارگذاری نشده است.');
+  $('loginBtn').disabled = true;
+} else if (
+  !c.SUPABASE_URL ||
+  c.SUPABASE_URL.startsWith('YOUR_') ||
+  !c.SUPABASE_ANON_KEY ||
+  c.SUPABASE_ANON_KEY.startsWith('YOUR_')
+) {
+  msg('تنظیمات config.js کامل نیست.');
+  $('loginBtn').disabled = true;
+} else {
+  db = window.supabase.createClient(
+    c.SUPABASE_URL,
+    c.SUPABASE_ANON_KEY
+  );
 }
 
-// CONNECT TO SUPABASE
+$('loginBtn').onclick = async () => {
+  if (!db) return;
 
-async function start() {
+  const email = $('email').value.trim();
+  const password = $('pass').value;
+
+  if (!email || !password) {
+    msg('ایمیل و رمز عبور را وارد کن.');
+    return;
+  }
+
+  $('loginBtn').disabled = true;
+  msg('در حال بررسی اطلاعات...');
 
   try {
-
-    const config = window.ARASHDEV_CONFIG || {};
-
-    if (!window.supabase) {
-      msg('کتابخانه Supabase بارگذاری نشده است.');
-      $('loginBtn').disabled = true;
-      return;
-    }
-
-    if (
-      !config.SUPABASE_URL ||
-      !config.SUPABASE_ANON_KEY ||
-      config.SUPABASE_URL.startsWith('YOUR_') ||
-      config.SUPABASE_ANON_KEY.startsWith('YOUR_')
-    ) {
-      msg('تنظیمات config.js کامل نیست.');
-      $('loginBtn').disabled = true;
-      return;
-    }
-
-    db = window.supabase.createClient(
-      config.SUPABASE_URL,
-      config.SUPABASE_ANON_KEY
-    );
-
-    const { data, error } = await db.auth.getSession();
+    const { data, error } = await db.auth.signInWithPassword({
+      email,
+      password
+    });
 
     if (error) throw error;
 
-    if (data.session) {
-      openEditor();
-    }
+    msg('ورود موفق بود!');
+    $('login').classList.add('hidden');
+    $('editor').classList.remove('hidden');
 
-    msg('آماده ورود هستید.');
-
+    loadList();
   } catch (error) {
-
-    console.error(error);
-    msg('خطا در اتصال: ' + error.message);
-
-  }
-
-}
-
-// LOGIN
-
-$('loginBtn').addEventListener('click', async function(event) {
-
-  event.preventDefault();
-
-  try {
-
-    if (!db) {
-      msg('اتصال پایگاه داده برقرار نیست.');
-      return;
-    }
-
-    const email = $('email').value.trim();
-    const password = $('pass').value;
-
-    if (!email || !password) {
-      msg('ایمیل و رمز عبور را وارد کنید.');
-      return;
-    }
-
-    $('loginBtn').disabled = true;
-
-    msg('در حال ورود...');
-
-    const { data, error } = await db.auth.signInWithPassword({
-      email: email,
-      password: password
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (!data.session) {
-      throw new Error('نشست ورود ایجاد نشد.');
-    }
-
-    msg('ورود موفقیت‌آمیز بود.');
-
-    openEditor();
-
-  } catch (error) {
-
-    console.error(error);
-    msg('خطا در ورود: ' + error.message);
-
+    msg('خطا: ' + error.message);
   } finally {
-
     $('loginBtn').disabled = false;
+  }
+};
 
+async function loadList() {
+  const { data, error } = await db
+    .from('projects')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    $('status').textContent = error.message;
+    return;
   }
 
-});
+  items = data || [];
 
-// OPEN ADMIN PANEL
-
-function openEditor() {
-
-  $('login').classList.add('hidden');
-  $('editor').classList.remove('hidden');
-
-  msg('به پنل مدیریت خوش آمدید.');
-
-  loadList();
-
+  $('list').innerHTML = items.map(p => 
+    <div class="item">
+      <b>${p.title}</b>
+    </div>
+  ).join('') || 'هنوز پروژه‌ای ثبت نشده است.';
 }
 
-// LOGOUT
-
-$('logout').addEventListener('click', async function() {
-
-  try {
-
-    await db.auth.signOut();
-
-    $('editor').classList.add('hidden');
-    $('login').classList.remove('hidden');
-
-    msg('از حساب خارج شدید.');
-
-  } catch (error) {
-
-    msg(error.message);
-
-  }
-
-});
-
-// IMAGE UPLOAD
-
-async function upload(file) {
-
-  const extension = (file.name.split('.').pop() || 'jpg')
-    .replace(/[^a-z0-9]/gi, '');
-
-  const path =
-    Date.now() + '-' + crypto.randomUUID() + '.' + extension;
-
-  const { error } = await db.storage
-    .from('project-images')
-    .upload(path, file);
-
-  if (error) throw error;
-
-  const result = db.storage
-    .from('project-images')
-    .getPublicUrl(path);
-
-  return result.data.publicUrl;
-
-}
-
-// SAVE PROJECT
-
-$('form').addEventListener('submit', async function(event) {
-
-  event.preventDefault();
-
-  try {
-
-    msg('در حال ذخیره پروژه...');
-
-    const id = $('pid').value;
-
-    const old = items.find(
-      item => String(item.id) === String(id)
-    );
-
-    let cover = old?.cover_url || null;
-
-    if ($('cover').files[0]) {
-      cover = await upload($('cover').files[0]);
-    }
-
-    let images = [...(old?.images || [])];
-
-    for (const file of $('gallery').files) {
-      const url = await upload(file);
-      images.push(url);
-    }
-
-    const project = {
-
-      title: $('title').value.trim(),
-
-      category: $('category').value,
-
-      description: $('description').value.trim(),
-
-      details: $('details').value.trim(),
-
-      project_url: $('url').value.trim() || null,
-
-      cover_url: cover,
-
-      images: images,
-
-      published: $('published').checked
-
-    };
-
-    let result;
-
-    if (id) {
+$('logout').onclick = async () => {
+  await db.auth.signOut();
+  location.reload();
+};
